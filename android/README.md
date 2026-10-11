@@ -20,7 +20,7 @@ can never fit in one APK.
 - `DownloadService.java` — foreground service that owns the sync so the download
   keeps running when the app is backgrounded or the screen is off. Puts a live
   progress notification in the tray and relays progress to the activity.
-- `ContentManager.java` — downloads the manifest + 18 `.zip` parts with HTTP
+- `ContentManager.java` — downloads the manifest + 22 `.zip` parts with HTTP
   Range resume into internal storage, verifies each part's SHA-256 and
   extracts it. Reports real-time cumulative bytes (updated ~every 0.4 s) so the
   progress bar/percent move continuously instead of per-part. Completed parts
@@ -54,7 +54,7 @@ can never fit in one APK.
 Sideloading any new APK triggers Google Play Protect's "App blocked to protect
 your device — Play Protect hasn't seen an app from this developer before."
 This is normal for a freshly-signed app, not a sign of a problem. The APK is
-~29 KB, requests only INTERNET / network-state / notification / wake-lock /
+~33 KB, requests only INTERNET / network-state / notification / wake-lock /
 foreground-service permissions, and is signed with the same keystore for every
 build (checksum is identical between rebuilds).
 
@@ -103,7 +103,7 @@ copyrighted LiveMCQ material — you are responsible for the hosting choice.
 python3 scripts/make_content_bundle.py /home/sakib/android_apk_build/bundle
 ```
 
-produces `bundle/part_0000.zip … part_0017.zip` + `bundle/livemcq_manifest.json`
+produces `bundle/part_0000.zip … part_0021.zip` + `bundle/livemcq_manifest.json`
 (manifest lists each part's file, size and sha256). Upload the whole directory
 so the manifest and parts sit side by side. archive.org example:
 
@@ -115,4 +115,4 @@ ia upload your-item bundle/* --metadata="title=LiveMCQ Offline Bundle" \
 The manifest URL is then
 `https://archive.org/download/your-item/livemcq_manifest.json`. Every part is
 locally verified end-to-end: SHA-256 checksums match the manifest and a full
-extract of all 18 parts is byte-identical to the source tree.
+extract of all 22 parts is byte-identical to the source tree.

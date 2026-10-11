@@ -20,7 +20,7 @@ None of them modify existing dump files.
 | `verify_lists.py` | Cross-checks dump passes (alignment, duplicates, union totals) | console report |
 | `audit.py` | sha256 + record-count manifest for every file | `api_data/MANIFEST.tsv`, `INDEX.md` |
 | `query.py` | Read-only CLI over `viewer/livemcq.db` (stats, exam lookup, exam question dumps, per-qid detail, FTS search, audio stats) — see the Usage block at its top | console |
-| `make_content_bundle.py` | Zips the viewer + media tree (already on disk) into 18 indexless zip parts + a manifest for the Android offline app | a bundle dir (`part_*.zip` + `livemcq_manifest.json`) |
+| `make_content_bundle.py` | Zips the viewer + media tree (already on disk) into 22 indexless zip parts + a manifest for the Android offline app | a bundle dir (`part_*.zip` + `livemcq_manifest.json`) |
 
 ## Resume-after-power-loss
 

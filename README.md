@@ -193,7 +193,7 @@ APK (`offlineMCQ.apk`, 33 KB) that runs the viewer on a phone or tablet with
 zero internet after setup. On first launch the app downloads the ~9 GB content bundle
 itself — SHA-256-verified, HTTP-Range-resumable,
 free-space-checked — then extracts and serves it from a loopback server to an embedded
-WebView. The bundle (21 zip parts + `livemcq_manifest.json`, 8.76 GB) is
+WebView. The bundle (22 zip parts + `livemcq_manifest.json`, 8.76 GB uncompressed) is
 produced by `scripts/make_content_bundle.py` and uploadable to archive.org or any
 Range-capable host. A single >4 GB "all-in-one" APK was proven impossible (Android's APK
 reader and Google's sign/align tools lack zip64; PDFs alone are 4.8 GB).
