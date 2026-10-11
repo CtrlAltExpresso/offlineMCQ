@@ -174,7 +174,8 @@ async function exam(id, review) {
   for (const [g, list] of Object.entries(groups)) {
     (list || []).forEach((q) => {
       if (!q || !q.question) return;
-      qs.push({ g: g || "Group", ...q });
+      const ans = parseInt(q.answer, 10);
+      qs.push({ g: g || "Group", ...q, answer: Number.isNaN(ans) ? 0 : ans });
     });
   }
   if (!qs.length) { render(lockPanel(id, "Paper has no readable questions.")); return; }
@@ -266,8 +267,9 @@ function optHTML(q, i, key, sel) {
 }
 function explainHTML(q, sel) {
   const right = q.answer;
-  const status = sel === right ? "✅ Correct" : (sel == null ? "Skipped" : "✖ Wrong");
-  return `<div class="explain"><h4>${status} — Answer: ${esc(q[`option${right}`])}</h4>${localImg(q.exp) || '<p class="muted">No explanation available.</p>'}</div>`;
+  const ansTxt = right ? (q[`option${right}`] || "—") : "Question cancelled — no answer key";
+  const status = right ? (sel === right ? "✅ Correct" : (sel == null ? "Skipped" : "✖ Wrong")) : "Cancelled";
+  return `<div class="explain"><h4>${status} — Answer: ${esc(ansTxt)}</h4>${localImg(q.exp) || '<p class="muted">No explanation available.</p>'}</div>`;
 }
 function localImg(html) {
   if (!html || !MEDIA_URL) return html;
@@ -285,8 +287,8 @@ window.nextQ = function () { if (T.idx < T.questions.length - 1) { T.idx++; T.re
 function finishExam() {
   clearInterval(T.timer);
   const qs = T.questions;
-  const right = qs.filter((q, i) => T.picks[i] === q.answer).length;
-  const wrong = qs.filter((q, i) => T.picks[i] != null && T.picks[i] !== q.answer).length;
+  const right = qs.filter((q, i) => q.answer && T.picks[i] === q.answer).length;
+  const wrong = qs.filter((q, i) => q.answer && T.picks[i] != null && T.picks[i] !== q.answer).length;
   const skip = qs.length - right - wrong;
   const pct = qs.length ? Math.round(right / qs.length * 100) : 0;
   render(`<div class="screen">
@@ -302,7 +304,7 @@ function finishExam() {
     ${qs.map((q, i) => `<div class="review-item">
       <span class="qindex">Q${i + 1} · ${esc(q.g)}</span>
       <div class="q">${esc(q.question)}</div>
-      <div class="a">${T.picks[i] === q.answer ? "✅ You: " : "✖ You: "}<b>${KEYS[(T.picks[i] || 0) - 1] || "—"}</b> · Correct: <b>${KEYS[q.answer - 1]}</b> — ${esc(q[`option${q.answer}`])}</div>
+      <div class="a">${T.picks[i] === q.answer ? "✅ You: " : "✖ You: "}<b>${KEYS[(T.picks[i] || 0) - 1] || "—"}</b> · Correct: <b>${q.answer ? KEYS[q.answer - 1] : "—"}</b> — ${esc(q.answer ? (q[`option${q.answer}`] || "—") : "cancelled")}</div>
     </div>`).join("")}
   </div>`);
 }
