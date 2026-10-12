@@ -20,6 +20,10 @@ OUTAPK="$OUT/LiveMCQ_Offline.apk"
 KEYSTORE="$OUT/livemcq.keystore"
 ALIGNED="$OUT/aligned.apk"
 SOURCE_URL="${SOURCE_URL:-}"
+# Bump these whenever the wrapper (Java/res) changes so a sideloaded update
+# installs over the previous one instead of being rejected as a downgrade.
+VERSION_CODE="${VERSION_CODE:-5}"
+VERSION_NAME="${VERSION_NAME:-1.4}"
 
 mkdir -p "$OUT"
 
@@ -51,7 +55,7 @@ echo "== resources/manifest =="
 "$BT/aapt2" link -o "$OUT/base.apk" -I "$PLAT" \
   --manifest "$REPO/android/AndroidManifest.xml" \
   --min-sdk-version 24 --target-sdk-version 34 \
-  --version-code 4 --version-name "1.3" \
+  --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" \
   "$OUT/res.zip"
 
 echo "== add dex =="

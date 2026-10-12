@@ -27,13 +27,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 EXAM_MAPS = ROOT / "api_data" / "exam_maps"
 SIZE_MB = 512
-NEW_VERSION = 2
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="/home/sakib/android_apk_build/bundle")
     ap.add_argument("--part-size", type=int, default=SIZE_MB)
+    ap.add_argument("--version", type=int, default=0,
+                    help="manifest version; default = current manifest version + 1")
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -44,6 +45,15 @@ def main():
     if not manifest_path.exists():
         raise SystemExit(f"manifest not found: {manifest_path}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    # This used to hardcode version 2, which silently DOWNGRADED a newer
+    # manifest (ContentManager.checkForUpdate only accepts a strictly greater
+    # version, so the rebuilt bundle would never reach installed apps).
+    prev_version = int(manifest.get("version", 0))
+    new_version = args.version or (prev_version + 1)
+    if new_version <= prev_version:
+        print(f"warning: version {new_version} is not greater than the existing"
+              f" {prev_version}; installed apps will NOT pick it up")
 
     files = sorted(p for p in EXAM_MAPS.glob("exam_*.json") if p.is_file())
     if not files:
@@ -91,11 +101,11 @@ def main():
     manifest["parts"].extend(new_parts)
     manifest["total_bytes"] = manifest.get("total_bytes", 0) + total_src
     manifest["total_files"] = manifest.get("total_files", 0) + len(files)
-    manifest["version"] = NEW_VERSION
+    manifest["version"] = new_version
     manifest_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
 
     print(f"\nmanifest: {manifest_path}")
-    print(f"version:     {manifest['version']}")
+    print(f"version:     {prev_version} -> {manifest['version']}")
     print(f"total parts: {len(manifest['parts'])}")
     print(f"total bytes: {manifest['total_bytes']/1073741824:.2f} GB")
     print(f"total files: {manifest['total_files']}")
