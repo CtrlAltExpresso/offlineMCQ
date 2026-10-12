@@ -35,6 +35,8 @@ def main():
     ap.add_argument("--part-size", type=int, default=SIZE_MB)
     ap.add_argument("--version", type=int, default=0,
                     help="manifest version; default = current manifest version + 1")
+    ap.add_argument("--prev-manifest", default="",
+                    help="previously PUBLISHED manifest; unchanged parts get \"carry\": true")
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -54,6 +56,17 @@ def main():
     if new_version <= prev_version:
         print(f"warning: version {new_version} is not greater than the existing"
               f" {prev_version}; installed apps will NOT pick it up")
+
+    prev_parts = {}
+    if args.prev_manifest:
+        pp = Path(args.prev_manifest)
+        if pp.exists():
+            try:
+                prev_parts = {p["file"]: p for p in
+                              json.loads(pp.read_text(encoding="utf-8")).get("parts", [])}
+                print(f"diffing against {pp} ({len(prev_parts)} parts)")
+            except Exception as e:
+                print(f"warning: could not read {pp}: {e}")
 
     files = sorted(p for p in EXAM_MAPS.glob("exam_*.json") if p.is_file())
     if not files:
@@ -80,9 +93,14 @@ def main():
             for src, arc in cur_names:
                 z.write(src, arc)
         h = hashlib.sha256(pz.read_bytes()).hexdigest()
-        new_parts.append(
-            {"file": pz.name, "size": pz.stat().st_size, "sha256": h, "count": len(cur_names)})
-        print(f"  {pz.name}: {pz.stat().st_size/1048576:.0f} MB  {len(cur_names)} files")
+        entry = {"file": pz.name, "size": pz.stat().st_size, "sha256": h, "count": len(cur_names)}
+        # Same filename and bytes as the published bundle => a device that already
+        # holds it (even with a pre-hash "ok" marker) can skip the re-download.
+        if prev_parts.get(pz.name, {}).get("sha256") == h:
+            entry["carry"] = True
+        new_parts.append(entry)
+        print(f"  {pz.name}: {pz.stat().st_size/1048576:.0f} MB  {len(cur_names)} files"
+              f"{'  [carry]' if entry.get('carry') else ''}")
 
     for f in files:
         sb = os.stat(f).st_size

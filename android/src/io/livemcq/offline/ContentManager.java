@@ -89,29 +89,76 @@ public final class ContentManager {
         return new File(doneDir(), "part_" + index + ".ok");
     }
 
-    private boolean isDone(int index) {
-        return doneFile(index).exists();
+    /**
+     * A part counts as done only when its marker records the sha256 the
+     * manifest currently advertises.
+     *
+     * Keying purely on the index meant that once a part had been fetched, a
+     * later bundle which changed that part's content (e.g. an updated viewer
+     * still packed as part_0017.zip) was never re-downloaded: every index
+     * already had a marker, the sync downloaded nothing, then stamped the new
+     * version as applied. The update silently did nothing.
+     *
+     * Unchanged parts still keep their marker, so an update only re-fetches the
+     * parts that actually changed.
+     *
+     * Markers written by older builds contain the literal "ok" and carry no
+     * hash. Such a marker is only trusted when the manifest marks the part
+     * "carry": true — i.e. the builder verified the bytes are identical to the
+     * previous release. That keeps the migration from a pre-hash install to a
+     * couple of changed parts instead of the whole bundle.
+     */
+    private boolean isDone(int index, String sha, boolean carry) {
+        File f = doneFile(index);
+        if (!f.exists()) {
+            return false;
+        }
+        if (sha == null || sha.isEmpty()) {
+            return true;      // manifest carries no hash: trust the marker
+        }
+        String have = readMarker(f);
+        if (have == null || have.isEmpty()) {
+            return false;
+        }
+        if (have.equals("ok")) {
+            return carry;
+        }
+        return have.equals(sha);
     }
 
-    private void markDone(int index) {
+    private static String readMarker(File f) {
+        try (InputStream in = new FileInputStream(f)) {
+            byte[] buf = new byte[128];
+            int n = in.read(buf);
+            return n <= 0 ? null : new String(buf, 0, n, "UTF-8").trim();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private void markDone(int index, String sha) {
         try {
             File d = doneDir();
             d.mkdirs();
             try (OutputStream o = new FileOutputStream(doneFile(index))) {
-                o.write("ok\n".getBytes("UTF-8"));
+                String v = (sha == null || sha.isEmpty()) ? "ok" : sha;
+                o.write(v.getBytes("UTF-8"));
+                o.write('\n');
             }
         } catch (IOException ignored) {
         }
     }
 
+    private static boolean carry(JSONObject part) {
+        return part != null && part.optBoolean("carry", false);
+    }
+
     private long baselineBytes(JSONArray parts) {
         long base = 0;
         for (int i = 0; i < parts.length(); i++) {
-            if (isDone(i)) {
-                JSONObject p = parts.optJSONObject(i);
-                if (p != null) {
-                    base += p.optLong("size", 0);
-                }
+            JSONObject p = parts.optJSONObject(i);
+            if (p != null && isDone(i, p.optString("sha256"), carry(p))) {
+                base += p.optLong("size", 0);
             }
         }
         return base;
@@ -214,7 +261,8 @@ public final class ContentManager {
 
             AtomicInteger completed = new AtomicInteger(0);
             for (int i = 0; i < parts.length(); i++) {
-                if (isDone(i)) {
+                JSONObject p = parts.optJSONObject(i);
+                if (p != null && isDone(i, p.optString("sha256"), carry(p))) {
                     completed.incrementAndGet();
                 }
             }
@@ -231,10 +279,10 @@ public final class ContentManager {
                         if (file == null || file.isEmpty()) {
                             continue;
                         }
-                        if (isDone(i)) {
+                        String sha = part.optString("sha256");
+                        if (isDone(i, sha, carry(part))) {
                             continue;
                         }
-                        String sha = part.optString("sha256");
                         long size = part.optLong("size", 0);
                         if (!process(i, base + file, file, sha, size, totalBytes, listener)) {
                             if (failure == null) {
@@ -243,7 +291,7 @@ public final class ContentManager {
                             cancelled.set(true);
                             return;
                         }
-                        markDone(i);
+                        markDone(i, sha);
                         completed.incrementAndGet();
                         report(listener, totalBytes, String.format(Locale.US, "%d/%d parts done", completed.get(), parts.length()));
                     }

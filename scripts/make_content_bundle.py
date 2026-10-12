@@ -69,6 +69,10 @@ def main():
     ap.add_argument("--part-size", type=int, default=SIZE_MB)
     ap.add_argument("--version", type=int, default=0,
                     help="manifest version; default = previous manifest version + 1")
+    ap.add_argument("--prev-manifest", default="",
+                    help="previously PUBLISHED manifest to diff against; parts whose "
+                         "bytes are unchanged get \"carry\": true so devices that already "
+                         "hold them skip the re-download (defaults to the manifest in --out)")
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -89,6 +93,19 @@ def main():
     if args.version and args.version <= prev_version:
         print(f"warning: requested version {version} is not greater than the existing {prev_version};"
               f" installed apps will NOT pick it up")
+
+    # Which parts can a device that has already synced keep? Compare against the
+    # manifest that is actually published on the server (the one in --out is the
+    # freshly built one, so it is only a fallback).
+    prev_parts = {}
+    prev_path = Path(args.prev_manifest) if args.prev_manifest else mpath
+    if prev_path.exists() and prev_path.resolve() != mpath.resolve():
+        try:
+            prev_parts = {p["file"]: p for p in json.loads(prev_path.read_text(encoding="utf-8")).get("parts", [])}
+        except Exception as e:
+            print(f"warning: could not read {prev_path}: {e}")
+        else:
+            print(f"diffing against {prev_path} ({len(prev_parts)} parts)")
 
     total_bytes = 0
     parts = []
@@ -113,9 +130,16 @@ def main():
                 comp = zipfile.ZIP_STORED if store else zipfile.ZIP_DEFLATED
                 z.write(src, arc, compress_type=comp)
         h = hashlib.sha256(pz.read_bytes()).hexdigest()
-        parts.append({"file": pz.name, "size": pz.stat().st_size, "sha256": h, "count": cur_count})
+        entry = {"file": pz.name, "size": pz.stat().st_size, "sha256": h, "count": cur_count}
+        # Present in the last published manifest with identical bytes => devices
+        # which already hold this part (including pre-hash "ok" markers) can keep
+        # it and only fetch what actually changed.
+        if prev_parts.get(pz.name, {}).get("sha256") == h:
+            entry["carry"] = True
+        parts.append(entry)
         # reconstruct byte total for the part's files for reporting (approx)
-        print(f"  {pz.name}: {pz.stat().st_size/1048576:.0f} MB  {cur_count} files  sha={h[:12]}")
+        print(f"  {pz.name}: {pz.stat().st_size/1048576:.0f} MB  {cur_count} files  sha={h[:12]}"
+              f"{'  [carry]' if entry.get('carry') else ''}")
         return 1
 
     cur_names = []
