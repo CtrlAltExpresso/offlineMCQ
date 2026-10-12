@@ -67,11 +67,28 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="/home/sakib/android_apk_build/bundle")
     ap.add_argument("--part-size", type=int, default=SIZE_MB)
+    ap.add_argument("--version", type=int, default=0,
+                    help="manifest version; default = previous manifest version + 1")
     args = ap.parse_args()
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     limit = args.part_size * 1024 * 1024
+
+    # ContentManager.checkForUpdate() only re-syncs when the remote version is
+    # strictly greater than what the device stored, so a rebuild must never
+    # reuse (or lower) the version of the bundle already out in the wild.
+    mpath = out / "livemcq_manifest.json"
+    prev_version = 0
+    if mpath.exists():
+        try:
+            prev_version = int(json.loads(mpath.read_text(encoding="utf-8")).get("version", 0))
+        except Exception:
+            prev_version = 0
+    version = args.version or (prev_version + 1)
+    if args.version and args.version <= prev_version:
+        print(f"warning: requested version {version} is not greater than the existing {prev_version};"
+              f" installed apps will NOT pick it up")
 
     total_bytes = 0
     parts = []
@@ -118,14 +135,13 @@ def main():
         flush(idx, cur_bytes, cur_count, cur_names)
 
     manifest = {
-        "version": 1,
+        "version": version,
         "total_bytes": total_bytes,
         "total_files": len(files),
         "parts": parts,
     }
-    mpath = out / "livemcq_manifest.json"
     mpath.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
-    print(f"\nmanifest: {mpath}")
+    print(f"\nmanifest: {mpath}  (version {prev_version} -> {version})")
     print(f"parts: {len(parts)}   total bytes: {total_bytes/1073741824:.2f} GB")
     for p in parts:
         print(f"  {p['file']:16} {p['size']/1048576:7.0f} MB  sha256 {p['sha256']}")

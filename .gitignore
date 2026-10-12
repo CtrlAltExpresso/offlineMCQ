@@ -21,3 +21,10 @@ media_progress.tsv
 .media_run.log
 .media_downloader.pid
 .media_failures.tsv
+
+# python
+__pycache__/
+*.pyc
+
+# per-id video probe/API cache (regenerable; the merged inventory is video_streams.json)
+api_data/video_streams/

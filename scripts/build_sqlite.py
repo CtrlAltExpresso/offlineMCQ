@@ -522,4 +522,20 @@ about = dict(courses=len(course_idx), exams=len(exams), questions=len(qrows),
              series=len(series), pdfs=len(pdfs), media=len(media),
              routine=len(routine))
 json.dump(about, open(f'{VD}/about.json', 'w'), ensure_ascii=False)
+
+# Recover the video stream URLs (deterministic CDN pattern, see
+# docs/VIDEO_RECOVERY.md). Regenerated here so a full rebuild doesn't drop
+# viewer/data/video_streams.json. Non-fatal: the viewer degrades to hiding the
+# play chips if the file is absent.
+try:
+    import make_video_urls
+    _argv = sys.argv
+    sys.argv = ['make_video_urls.py']
+    try:
+        make_video_urls.main()
+    finally:
+        sys.argv = _argv
+except Exception as e:
+    print('video stream inventory skipped:', e)
+
 print('viewer data written to', VD)

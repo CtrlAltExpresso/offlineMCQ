@@ -13,11 +13,84 @@ const pdfFrame = document.getElementById("pdfModalFrame");
 const pdfModalTitle = document.getElementById("pdfModalTitle");
 const toast = document.getElementById("toast");
 
-let MEDIA_URL = {};   // url -> rel_path
+let MEDIA_URL = {};   // url -> rel_path (relative to the media root)
+let MEDIA_BASE = "../media/";   // resolved once at boot: desktop <-> android bundle
+let STREAMS = {};     // video id -> {base, renditions:[{rendition,url,size,...}]}
+
+/* The media tree is laid out differently per deployment:
+     desktop  ->  <repo>/media/<host>/<path>      => "../media/" + rel
+     android  ->  <bundle>/<host>/<path>          => "../" + rel
+   Probe candidate bases once at boot and keep the first that actually serves
+   a real file, so images / thumbnails / PDFs stop 404-ing. */
+const mediaURL = (rel) => MEDIA_BASE + rel;
+async function probeMediaBase() {
+  const rels = Object.values(MEDIA_URL).filter(Boolean);
+  if (!rels.length) return;
+  const sample = rels.filter(r => /\.(jpe?g|png|webp|gif)$/i.test(r)).slice(0, 4);
+  if (!sample.length) sample.push(...rels.slice(0, 4));
+  for (const base of ["../media/", "../", "./media/", "media/"]) {
+    for (const rel of sample) {
+      let ok = false;
+      try {
+        const r = await fetch(base + rel, { method: "HEAD", cache: "no-store" });
+        ok = r.ok || r.status === 206;
+      } catch (e) {
+        try {
+          const r2 = await fetch(base + rel, { headers: { Range: "bytes=0-0" }, cache: "no-store" });
+          ok = r2.ok || r2.status === 206;
+        } catch (e2) { ok = false; }
+      }
+      if (ok) { MEDIA_BASE = base; return; }
+    }
+  }
+  // file:// (no fetch) or an unknown layout: keep the desktop default.
+}
 
 const go = (p) => { location.hash = p; };
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const num = (n) => (n ?? 0).toLocaleString("en-US");
+
+/* The LiveMCQ API packs the whole syllabus / instruction block into the exam
+   "title" field (6.5k exams, up to ~2.3k chars). Split it into a compact
+   heading plus the full text, which is shown collapsed. */
+function splitTitle(s) {
+  const raw = String(s ?? "").replace(/\s+/g, " ").trim();
+  if (!raw) return { short: "", full: "" };
+  let head = raw;
+  const sep = raw.search(/-{3,}|_{3,}|={3,}|•{3,}/);   // syllabus separator
+  if (sep > 0) head = raw.slice(0, sep);
+  head = head.replace(/[\s\-–—_,;:]+$/, "").trim();
+  if (head.length > 90) {
+    const cut = head.slice(0, 90);
+    const sp = cut.lastIndexOf(" ");
+    head = (sp > 40 ? cut.slice(0, sp) : cut).replace(/[\s\-–—_,;:]+$/, "").trim() + "…";
+  }
+  const bare = head.replace(/…$/, "");
+  const full = raw.length - bare.length > 40 ? raw : "";
+  return { short: head || raw, full };
+}
+const shortTitle = (s) => splitTitle(s).short;
+
+/* Exam title + syllabus, deduped: `t` and `s` are usually the same blob. */
+function titleInfo(t, id) {
+  const a = String((t && t.t) || "").replace(/\s+/g, " ").trim();
+  const b = String((t && t.s) || "").replace(/\s+/g, " ").trim();
+  const blob = a.length >= b.length ? a : b;
+  const parts = splitTitle(blob);
+  const short = (a && a.length <= 90) ? a : (parts.short || `Exam #${id}`);
+  return {
+    short: short || `Exam #${id}`,
+    full: (parts.full && blob.length > short.length + 40) ? blob : "",
+    sub: (b && b !== a && b.length <= 200) ? b : ""
+  };
+}
+/* Turn the "----" runs the API uses as separators into real line breaks. */
+function sylHTML(text) {
+  return esc(text).replace(/\s*-{3,}\s*/g, "<br>");
+}
+function sylBlock(label, text) {
+  return `<details class="syl"><summary>${esc(label)}</summary><div>${sylHTML(text)}</div></details>`;
+}
 
 function showToast(msg) {
   toast.textContent = msg;
@@ -88,7 +161,7 @@ function rRow(e, pos) {
   if (!e.has) badges.push('<span class="pill pill-lock">Locked</span>');
   return `<div class="exam-row ${e.has ? "" : "locked"}" ${e.has ? `onclick="go('#/exam/${e.id}')"` : ""}>
     <div class="mid">
-      <h3>${e.title ? esc(e.title) : `Routine exam #${e.id}`}</h3>
+      <h3>${e.title ? esc(shortTitle(e.title)) : `Routine exam #${e.id}`}</h3>
       <div class="meta">
         ${e.date ? `<span class="meta-date">📅 ${esc(e.date)}</span>` : ""}
         ${e.subj ? `<span>${esc(e.subj)}</span>` : ""}
@@ -140,7 +213,7 @@ function examRow(e, pos) {
   const dateTxt = f ? `${f.d} ${f.m} ${f.y}` : null;
   return `<div class="exam-row ${e.has ? "" : "locked"}" onclick="go('#/exam/${e.id}')">
     <div class="mid">
-      <h3>${e.title ? esc(e.title) : `Exam #${e.id}`}</h3>
+      <h3>${e.title ? esc(shortTitle(e.title)) : `Exam #${e.id}`}</h3>
       <div class="meta">
         ${dateTxt ? `<span class="meta-date">📅 ${dateTxt}</span>` : ""}
         <span>${num(e.qn)} questions</span>${badges.join("")}
@@ -168,7 +241,8 @@ async function exam(id, review) {
   }
   if (!window.LOCAL.titles) window.LOCAL.titles = {};
   const t = window.LOCAL.titles[String(id)] || { t: "", s: "" };
-  topbarCount.textContent = t.t || `Exam #${id}`;
+  const ti = titleInfo(t, id);
+  topbarCount.textContent = ti.short;
   const qs = [];
   const groups = raw.question_text || {};
   for (const [g, list] of Object.entries(groups)) {
@@ -179,9 +253,9 @@ async function exam(id, review) {
     });
   }
   if (!qs.length) { render(lockPanel(id, "Paper has no readable questions.")); return; }
-  Object.assign(T, { questions: qs, idx: 0, picks: new Array(qs.length).fill(null), revealed: false, started: false, title: t.t, syl: t.s });
+  Object.assign(T, { questions: qs, idx: 0, picks: new Array(qs.length).fill(null), revealed: false, started: false, title: ti.short, syl: ti.sub, ti: ti });
   if (review) mountReview();
-  else examIntro(id, raw, t);
+  else examIntro(id, raw, ti);
 }
 
 function lockPanel(id, msg) {
@@ -191,13 +265,13 @@ function lockPanel(id, msg) {
     <button class="btn btn-ghost" onclick="history.back()">Go back</button></div>`;
 }
 
-function examIntro(id, raw, t) {
+function examIntro(id, raw, ti) {
   const tm = raw.exam_time ? (raw.exam_time / 60000).toFixed(0) : null;
   const n = T.questions.length;
-  const title = (t && t.t) ? t.t : `Exam #${id}`;
   render(`<div class="screen exam-head">
-    <h2>${esc(title)}</h2>
-    ${t && t.s ? `<p class="muted" style="margin:6px 0 10px;font-size:13.5px">${esc(t.s)}</p>` : ""}
+    <div class="qindex">EXAM #${id}</div>
+    <h2>${esc(ti.short)}</h2>
+    ${ti.sub ? `<p class="muted" style="margin:6px 0 10px;font-size:13.5px">${esc(ti.sub)}</p>` : ""}
     <div class="meta">
       <span><b>${n}</b> questions</span>
       <span>${Object.keys(raw.question_text).length} sections</span>
@@ -205,6 +279,7 @@ function examIntro(id, raw, t) {
       ${raw.is_omr ? '<span class="pill pill-omr">OMR</span>' : ""}
     </div>
     <p class="muted" style="margin:10px 0 0;font-size:14px">Answer each question, then see the correct answer and full explanation instantly. Your score is tallied at the end.</p>
+    ${ti.full ? sylBlock("Syllabus & instructions", ti.full) : ""}
     <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="startExam()">Start test</button>
       <button class="btn btn-ghost" onclick="go('#/exam/${id}/review')">Review all answers</button>
@@ -275,7 +350,7 @@ function localImg(html) {
   if (!html || !MEDIA_URL) return html;
   return html.replace(/src=["'](https?:\/\/[^"']+)["']/g, (m, u) => {
     const r = MEDIA_URL[u];
-    return r ? `src="../${r}"` : m;
+    return r ? `src="${mediaURL(r)}"` : m;
   });
 }
 window.pick = function (i) {
@@ -417,7 +492,7 @@ async function videos() {
       </div>
       <div class="acc-body">${s.videos.map(v => vRow(v)).join("")}</div>
     </div>`).join("")}
-    <div class="foot">Video streams are keyed by the app player (secret key) and are not recoverable. Thumbnails + PDF handouts are local.</div>
+    <div class="foot">Stream URLs recovered from the LiveMCQ API (CDN is unauthenticated / token-free). Play streams online, or download with <code>scripts/download_videos.sh</code> and they play from local disk.</div>
   </div>`);
 }
 window.accToggle = function (head) {
@@ -427,18 +502,38 @@ function vRow(v) {
   const rel = v.th ? MEDIA_URL[v.th] : null;
   const dur = v.dur || "";
   const date = v.date || "";
-  return `<div class="vrow" onclick="vOpen(${v.id})">
-    <div class="thumb">${rel ? `<img src="../${rel}" loading="lazy" alt="">` : '<span class="ph">▶</span>'}</div>
+  const st = STREAMS[v.id];
+  const rends = (st ? st.renditions : []).slice().sort((a, b) => (a.size || 0) - (b.size || 0));
+  const play = rends.map(r => `<span class="vplay" onclick="event.stopPropagation();vOpen('${v.id}','${esc(r.rendition || "")}')">▶ ${esc(r.rendition || r.quality || "video")}</span>`).join("");
+  return `<div class="vrow">
+    <div class="thumb">${rel ? `<img src="${mediaURL(rel)}" loading="lazy" alt="">` : '<span class="ph">▶</span>'}</div>
     <div class="vi">
       <h4>${esc(v.t)}</h4>
       <div class="meta"><span>${esc(date)}</span>${dur ? `<span>⏱ ${esc(dur)}</span>` : ""}
         ${v.free ? '<span class="pill pill-free">Free</span>' : '<span class="pill pill-premium">Premium</span>'}</div>
-      <div class="mets">${v.p ? `<span class="vpdf" onclick="event.stopPropagation();openPdf('${esc(v.p).replace(/'/g, "\\'")}')">📄 PDF notes</span>` : ""}<span class="vlock">▶ video not in archive</span></div>
+      <div class="mets">${v.p ? `<span class="vpdf" onclick="event.stopPropagation();openPdf('${esc(v.p).replace(/'/g, "\\'")}')">📄 PDF notes</span>` : ""}${play || '<span class="vlock">▶ stream not resolved</span>'}</div>
     </div>
   </div>`;
 }
-window.vOpen = function (id) {
-  showToast("Video streams are stored app-side (secret key) — not recoverable. PDF notes & thumbnails are available.");
+window.vOpen = async function (id, rendition) {
+  const st = STREAMS[id];
+  if (!st || !st.renditions.length) { showToast("No stream URL recovered for this video."); return; }
+  let r = st.renditions.find(x => x.rendition === rendition) || st.renditions.find(x => x.rendition === "360p") || st.renditions[0];
+  // prefer a locally downloaded copy (media/videos/<id>/<file>) if present
+  let src = r.url;
+  const localRel = "videos/" + id + "/" + r.file;
+  try {
+    const hr = await fetch(mediaURL(localRel), { method: "HEAD", cache: "no-store" });
+    if (hr.ok || hr.status === 206) src = mediaURL(localRel);
+  } catch (e) { /* not downloaded — stream from the CDN */ }
+  const vm = document.getElementById("vidModal");
+  const frame = document.getElementById("vidModalFrame");
+  const title = document.getElementById("vidModalTitle");
+  title.textContent = (st.base || "").split("/").pop() || r.file;
+  document.getElementById("vidModalSrc").textContent = src;
+  document.getElementById("vidModalSrc").href = src;
+  frame.src = src;
+  vm.classList.remove("hidden");
 };
 
 /* ---------------- pdfs ---------------- */
@@ -471,13 +566,21 @@ async function pdfs() {
 function resolvePdf(url) {
   const rel = MEDIA_URL[url];
   if (!rel) return null;
-  return "/" + rel.replace(/^\.?\//, "");
+  return mediaURL(rel);
+}
+/* Android WebView has no built-in PDF engine, so an <iframe> pointing straight
+   at a .pdf renders blank there. Bundle pdf.js and hand it the same absolute
+   URL the <img> tags already use. Desktop benefits too (consistent UI, works
+   in browsers with the PDF plugin disabled). */
+let HAVE_PDFJS = false;
+function pdfViewerSrc(rel) {
+  const abs = new URL(mediaURL(rel), location.href).href;
+  return "pdfjs/web/viewer.html?file=" + encodeURIComponent(abs);
 }
 function openPdfFile(url) {
   const rel = MEDIA_URL[url];
   if (!rel) { showToast("File not on disk."); return; }
-  const src = "../" + rel;
-  pdfFrame.src = src;
+  pdfFrame.src = HAVE_PDFJS ? pdfViewerSrc(rel) : mediaURL(rel);
   pdfModalTitle.textContent = rel.split("/").pop();
   pdfModal.classList.remove("hidden");
 }
@@ -488,6 +591,14 @@ document.getElementById("pdfModalClose").addEventListener("click", () => {
   pdfModal.classList.add("hidden");
 });
 pdfModal.addEventListener("click", (e) => { if (e.target === pdfModal) { pdfFrame.src = ""; pdfModal.classList.add("hidden"); } });
+
+/* ---------------- video modal ---------------- */
+const vidModal = document.getElementById("vidModal");
+const vidFrame = document.getElementById("vidModalFrame");
+const closeVid = () => { try { vidFrame.pause(); } catch (e) {} vidFrame.removeAttribute("src"); vidFrame.load(); vidModal.classList.add("hidden"); };
+document.getElementById("vidModalClose").addEventListener("click", closeVid);
+vidModal.addEventListener("click", (e) => { if (e.target === vidModal) closeVid(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !vidModal.classList.contains("hidden")) closeVid(); });
 
 /* ---------------- routing ---------------- */
 backBtn.addEventListener("click", () => history.back());
@@ -506,6 +617,14 @@ async function route() {
 }
 
 (async function boot() {
-  await loadJSON("data/media_url.json").then(m => { MEDIA_URL = m; }).catch(() => {});
+  await Promise.all([
+    loadJSON("data/media_url.json").then(m => { MEDIA_URL = m; }).catch(() => {}),
+    loadJSON("data/video_streams.json").then(m => { STREAMS = m || {}; }).catch(() => {}),
+  ]);
+  await probeMediaBase();
+  try {
+    const r = await fetch("pdfjs/web/viewer.html", { method: "HEAD", cache: "no-store" });
+    HAVE_PDFJS = r.ok;
+  } catch (e) { HAVE_PDFJS = false; }
   route();
 })();

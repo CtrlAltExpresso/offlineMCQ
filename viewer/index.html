@@ -36,6 +36,15 @@
   <iframe id="pdfModalFrame"></iframe>
 </div>
 
+<div class="modal hidden" id="vidModal">
+  <div class="modal-bar">
+    <span class="modal-title" id="vidModalTitle"></span>
+    <a class="modal-open" id="vidModalSrc" target="_blank" rel="noopener" title="Open stream in a new tab">↗</a>
+    <button class="modal-close" id="vidModalClose">✕</button>
+  </div>
+  <video id="vidModalFrame" controls playsinline preload="metadata"></video>
+</div>
+
 <div class="toast hidden" id="toast"></div>
 
 <script>window.LOCAL = { about: null, courses: null, media: null, bank: null, pdfs: null };</script>

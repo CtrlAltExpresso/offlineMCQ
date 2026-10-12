@@ -79,13 +79,17 @@ public final class AssetServer {
             if (line == null) {
                 return;
             }
-            // Drain the rest of the request headers. Closing a socket while the
-            // peer's bytes are still unread makes the kernel send RST instead of
-            // FIN, which the WebView reports as net::ERR_CONNECTION_RESET and the
-            // page load silently dies.
+            // Drain the rest of the request headers, capturing Range. Closing a
+            // socket while the peer's bytes are still unread makes the kernel send
+            // RST instead of FIN, which the WebView reports as
+            // net::ERR_CONNECTION_RESET and the page load silently dies.
+            String rangeHeader = null;
             String header;
             while ((header = readLine(reqIn)) != null && header.length() > 0) {
-                // discarded
+                int c = header.indexOf(':');
+                if (c > 0 && header.substring(0, c).trim().equalsIgnoreCase("Range")) {
+                    rangeHeader = header.substring(c + 1).trim();
+                }
             }
             String[] parts = line.split(" ");
             if (parts.length < 2) {
@@ -101,30 +105,107 @@ public final class AssetServer {
                 respond(s.getOutputStream(), 404, "text/plain; charset=utf-8", -1);
                 return;
             }
-            long len = target.length();
             OutputStream out = s.getOutputStream();
-            String head = "HTTP/1.0 200 OK\r\n"
-                    + "Content-Type: " + mime(target.getName()) + "\r\n"
-                    + "Content-Length: " + len + "\r\n"
-                    + "Connection: close\r\n"
-                    + "Cache-Control: no-store\r\n\r\n";
-            out.write(head.getBytes("ISO-8859-1"));
+            long len = target.length();
+            long start = 0, end = len - 1;
+            boolean partial = false;
+            if (rangeHeader != null && !rangeHeader.isEmpty()) {
+                long[] r = parseRange(rangeHeader, len);
+                if (r == null) {
+                    String h = "HTTP/1.1 416 Range Not Satisfiable\r\n"
+                            + "Content-Range: bytes */" + len + "\r\n"
+                            + "Content-Length: 0\r\nConnection: close\r\n\r\n";
+                    out.write(h.getBytes("ISO-8859-1"));
+                    out.flush();
+                    return;
+                }
+                start = r[0];
+                end = r[1];
+                partial = true;
+            }
+            long length = end - start + 1;
+            StringBuilder hb = new StringBuilder();
+            hb.append(partial ? "HTTP/1.1 206 Partial Content\r\n" : "HTTP/1.1 200 OK\r\n")
+              .append("Content-Type: ").append(mime(target.getName())).append("\r\n")
+              .append("Content-Length: ").append(length).append("\r\n")
+              .append("Accept-Ranges: bytes\r\n");
+            if (partial) {
+                hb.append("Content-Range: bytes ").append(start).append('-').append(end)
+                  .append('/').append(len).append("\r\n");
+            }
+            hb.append("Connection: close\r\nCache-Control: no-store\r\n\r\n");
+            out.write(hb.toString().getBytes("ISO-8859-1"));
             if ("HEAD".equals(method)) {
                 out.flush();
                 return;
             }
             try (InputStream in = new BufferedInputStream(new FileInputStream(target), 256 * 1024)) {
                 byte[] buf = new byte[128 * 1024];
+                long skip = start;
+                while (skip > 0) {
+                    long sk = in.skip(skip);
+                    if (sk <= 0) {
+                        break;
+                    }
+                    skip -= sk;
+                }
+                long remaining = length;
                 int r;
-                while ((r = in.read(buf)) > 0) {
+                while (remaining > 0 && (r = in.read(buf, 0, (int) Math.min(buf.length, remaining))) > 0) {
                     if (s.isClosed()) {
                         return;
                     }
                     out.write(buf, 0, r);
+                    remaining -= r;
                 }
                 out.flush();
             }
         } catch (IOException ignored) {
+        }
+    }
+
+    /**
+     * Parse a single-range "bytes=a-b" / "bytes=a-" / "bytes=-n" header.
+     * Returns {start, end} inclusive, or null if unsatisfiable / unusable.
+     */
+    private static long[] parseRange(String h, long len) {
+        if (!h.startsWith("bytes=") || len <= 0) {
+            return null;
+        }
+        String spec = h.substring(6);
+        int comma = spec.indexOf(',');
+        if (comma >= 0) {
+            spec = spec.substring(0, comma);
+        }
+        spec = spec.trim();
+        int dash = spec.indexOf('-');
+        if (dash < 0) {
+            return null;
+        }
+        try {
+            String a = spec.substring(0, dash).trim();
+            String b = spec.substring(dash + 1).trim();
+            long start, end;
+            if (a.isEmpty()) {
+                long n = Long.parseLong(b);
+                if (n <= 0) {
+                    return null;
+                }
+                start = Math.max(0, len - n);
+                end = len - 1;
+            } else {
+                start = Long.parseLong(a);
+                end = b.isEmpty() ? len - 1 : Long.parseLong(b);
+            }
+            if (end > len - 1) {
+                end = len - 1;
+            }
+            if (start < 0 || start > end || start >= len) {
+                return null;
+            }
+            return new long[]{start, end};
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
@@ -193,8 +274,9 @@ public final class AssetServer {
     private static String mime(String name) {
         String p = name.toLowerCase();
         if (p.endsWith(".html") || p.endsWith(".htm")) return "text/html; charset=utf-8";
-        if (p.endsWith(".js")) return "application/javascript; charset=utf-8";
+        if (p.endsWith(".js") || p.endsWith(".mjs")) return "application/javascript; charset=utf-8";
         if (p.endsWith(".json")) return "application/json; charset=utf-8";
+        if (p.endsWith(".wasm")) return "application/wasm";
         if (p.endsWith(".css")) return "text/css; charset=utf-8";
         if (p.endsWith(".svg")) return "image/svg+xml; charset=utf-8";
         if (p.endsWith(".png")) return "image/png";

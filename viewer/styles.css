@@ -49,7 +49,8 @@ a { color: var(--navy); text-decoration: none; }
 .brand-back { background: rgba(255,255,255,.12); border: 0; color: #fff; border-radius: 10px;
   width: 36px; height: 36px; font-size: 22px; line-height: 1; cursor: pointer; }
 .brand-back:hover { background: rgba(255,255,255,.22); }
-.topbar-count { margin-left: auto; font-size: 12px; color: #b9c6f0; text-align: right; }
+.topbar-count { margin-left: auto; font-size: 12px; color: #b9c6f0; text-align: right;
+  max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- layout ---------- */
 main { max-width: 860px; margin: 0 auto; padding: 18px 16px 84px; }
@@ -105,8 +106,20 @@ main { max-width: 860px; margin: 0 auto; padding: 18px 16px 84px; }
 /* ---------- exam taking ---------- */
 .exam-head { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 16px 18px; margin-bottom: 12px; box-shadow: var(--shadow); }
-.exam-head h2 { font-size: 19px; margin-bottom: 8px; }
+.exam-head h2 { font-size: 19px; margin-bottom: 8px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .exam-head .meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+
+/* the API stuffs whole syllabus blocks into exam titles — keep them collapsed */
+.syl { margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fafbff; }
+.syl > summary { cursor: pointer; list-style: none; padding: 10px 14px;
+  font-family: "Montserrat", sans-serif; font-weight: 700; font-size: 12.5px; color: var(--navy);
+  text-transform: uppercase; letter-spacing: .4px; }
+.syl > summary::-webkit-details-marker { display: none; }
+.syl > summary::before { content: "▸ "; color: var(--muted); }
+.syl[open] > summary::before { content: "▾ "; }
+.syl[open] > summary { border-bottom: 1px solid var(--line); }
+.syl > div { padding: 10px 14px 12px; font-size: 13.5px; color: #333c55; line-height: 1.65; }
 .progress { height: 6px; background: #e6ebf9; border-radius: 6px; overflow: hidden; margin: 12px 0 0; }
 .progress > div { height: 100%; background: linear-gradient(90deg, var(--navy), var(--navy-2)); border-radius: 6px; }
 .timer { font-family: "Montserrat", sans-serif; font-variant-numeric: tabular-nums; color: var(--navy); font-weight: 700; }
@@ -199,6 +212,9 @@ main { max-width: 860px; margin: 0 auto; padding: 18px 16px 84px; }
   border-radius: 999px; padding: 2px 10px; cursor: pointer; display: inline-block; }
 .vlock { font-size: 12px; color: var(--bad); border: 1px solid #f3c6c6; background: var(--bad-bg);
   border-radius: 999px; padding: 2px 10px; display: inline-block; margin-left: 8px; }
+.vplay { font-size: 12px; color: var(--navy); border: 1px solid #c3d0f0; background: #eef3ff;
+  border-radius: 999px; padding: 2px 10px; cursor: pointer; display: inline-block; margin-left: 8px; font-weight: 600; }
+.vplay:hover { background: #e0e9ff; }
 
 /* ---------- pdfs ---------- */
 .pdf-count { font-size: 13px; color: var(--muted); margin: 4px 2px 12px; }
@@ -219,7 +235,12 @@ main { max-width: 860px; margin: 0 auto; padding: 18px 16px 84px; }
   background: #fff; gap: 10px; }
 .modal-title { flex: 1; font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .modal-close { border: 0; background: #eef1f7; border-radius: 10px; width: 34px; height: 34px; cursor: pointer; font-size: 14px; }
+.modal-open { text-decoration: none; color: var(--navy); background: #eef1f7; border-radius: 10px;
+  width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  margin-right: 8px; font-size: 15px; }
 .modal iframe { flex: 1; border: 0; width: 100%; background: #f0f2f7; }
+.modal video { flex: 1; width: 100%; background: #000; outline: 0; }
+@media (min-width: 900px) { .modal video { max-height: 82vh; } }
 .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: #11152a; color: #fff;
   padding: 10px 18px; border-radius: 12px; font-size: 14px; z-index: 200; box-shadow: var(--shadow); }
 .toast.hidden { display: none; }

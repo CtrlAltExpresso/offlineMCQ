@@ -3,11 +3,13 @@ package io.livemcq.offline;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
@@ -343,6 +345,37 @@ public class MainActivity extends Activity implements DownloadService.Listener {
                                     android.webkit.WebResourceError e) {
             android.util.Log.e("LiveMCQWeb", "onReceivedError " + r.getUrl()
                     + " -> " + e.getErrorCode() + " " + e.getDescription());
+        }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView v, android.webkit.WebResourceRequest r) {
+            return external(v, r.getUrl() == null ? null : r.getUrl().toString());
+        }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView v, String url) {
+            return external(v, url);
+        }
+
+        /** Keep the local asset server + about: inside the WebView; send
+         *  everything else (CDN streams, play store, mailto, …) to the system
+         *  so a tapped link can't replace the whole viewer. */
+        private boolean external(WebView v, String url) {
+            if (url == null || url.isEmpty()
+                    || url.startsWith("http://127.0.0.1:")
+                    || url.startsWith("about:")
+                    || url.startsWith("blob:")
+                    || url.startsWith("data:")) {
+                return false;
+            }
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                v.getContext().startActivity(i);
+            } catch (Exception e) {
+                android.util.Log.e("LiveMCQWeb", "no activity for " + url);
+            }
+            return true;
         }
     }
 
