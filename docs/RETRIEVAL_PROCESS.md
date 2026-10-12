@@ -8,7 +8,7 @@ Full write-up of how the content was recovered, so any step can be reproduced or
 
 - **Who:** Nabil Rahman (owner, `nabilrahman@livemcq.com`, `+880 1935452344`)
 - **Ref:** `LMCQ-DR-2026-1006`, signed 2026-10-06, valid through 2026-12-31
-- **Document:** [`authorization/`](../authorization/)
+- **Document:** [`LiveMCQ_Data_Recovery_Authorization.pdf`](../LiveMCQ_Data_Recovery_Authorization.pdf) · [`.txt`](../LiveMCQ_Data_Recovery_Authorization.txt)
 - Authorization letter covers the APK, on-device app data, the live API, and the backend
   infrastructure.
 

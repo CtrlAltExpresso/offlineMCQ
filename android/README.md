@@ -20,11 +20,12 @@ can never fit in one APK.
 - `DownloadService.java` — foreground service that owns the sync so the download
   keeps running when the app is backgrounded or the screen is off. Puts a live
   progress notification in the tray and relays progress to the activity.
-- `ContentManager.java` — downloads the manifest + 22 `.zip` parts with HTTP
+- `ContentManager.java` — downloads the manifest + 21 `.zip` parts with HTTP
   Range resume into internal storage, verifies each part's SHA-256 and
   extracts it. Reports real-time cumulative bytes (updated ~every 0.4 s) so the
   progress bar/percent move continuously instead of per-part. Completed parts
-  are marked on disk (`.ok` files), so a paused/interrupted download resumes
+  are marked on disk (`.ok` files, each recording that part's SHA-256), so a
+  paused/interrupted download resumes
   exactly where it stopped — already-done parts are skipped and the progress
   continues from the saved byte count, never from 0. Safe against interrupted
   downloads and non-Range servers (a `200` full-body reply is caught by the
@@ -83,8 +84,8 @@ After approval the warning stops for every install signed with this keystore.
 # plain (user pastes the manifest URL on first run)
 bash android/build_apk.sh                       # -> dist/LiveMCQ_Offline.apk
 
-# URL baked in, no typing needed
-SOURCE_URL=https://archive.org/download/your-item/livemcq_manifest.json \
+# URL baked in, no typing needed (this repo's published bundle):
+SOURCE_URL=https://github.com/CtrlAltExpresso/offlineMCQ/releases/download/content-v2/livemcq_manifest.json \
   bash android/build_apk.sh
 ```
 
@@ -103,7 +104,7 @@ copyrighted LiveMCQ material — you are responsible for the hosting choice.
 python3 scripts/make_content_bundle.py /home/sakib/android_apk_build/bundle
 ```
 
-produces `bundle/part_0000.zip … part_0021.zip` + `bundle/livemcq_manifest.json`
+produces `bundle/part_0000.zip … part_0020.zip` (21 parts) + `bundle/livemcq_manifest.json`
 (manifest lists each part's file, size and sha256). Upload the whole directory
 so the manifest and parts sit side by side. archive.org example:
 
@@ -115,4 +116,4 @@ ia upload your-item bundle/* --metadata="title=LiveMCQ Offline Bundle" \
 The manifest URL is then
 `https://archive.org/download/your-item/livemcq_manifest.json`. Every part is
 locally verified end-to-end: SHA-256 checksums match the manifest and a full
-extract of all 22 parts is byte-identical to the source tree.
+extract of all 21 parts is byte-identical to the source tree.

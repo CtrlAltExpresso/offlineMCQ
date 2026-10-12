@@ -47,7 +47,7 @@ verified with checksums and cross-checked across independent dump passes.
 [![Integrity](https://img.shields.io/badge/integrity-sha256%20verified-64748b?style=flat-square)](#-integrity)
 
 The app was built behind a growing collection of exams and questions that were at risk of being
-lost. With the app owner's authorization (see [`authorization/`](authorization/)), everything the
+lost. With the app owner's authorization (see [`LiveMCQ_Data_Recovery_Authorization.pdf`](LiveMCQ_Data_Recovery_Authorization.pdf)), everything the
 app serves was pulled from its live API and re-organized into a structure that mirrors what the
 app shows:
 
@@ -55,7 +55,7 @@ app shows:
 
 The LiveMCQ app (Bangladeshi BCS / Bank / Government-job MCQ test platform) was built behind a
 growing collection of exams and questions that were at risk of being lost. With the app owner's
-authorization (see [`authorization/`](authorization/)), everything the app serves was pulled
+authorization (see [`LiveMCQ_Data_Recovery_Authorization.pdf`](LiveMCQ_Data_Recovery_Authorization.pdf)), everything the app serves was pulled
 from its live API and re-organized into a structure that mirrors what the app shows:
 
 ```
@@ -142,7 +142,8 @@ python3 viewer/serve.py
 
 Everything it needs already ships in the repo: the compact shards under `viewer/data/`
 (regenerate locally with the script below) and the per-exam JSON in `api_data/exam_maps/`.
-Video thumbnails and PDF handouts load from `media/` (present on this machine).
+Video thumbnails and PDF handouts load from `media/` (present on this machine); video
+playback streams load from the public CDN via `viewer/data/video_streams.json`.
 
 ### 2) SQLite database — mirrors the app's own Isar data model
 
@@ -193,7 +194,7 @@ APK (`offlineMCQ.apk`, 33 KB) that runs the viewer on a phone or tablet with
 zero internet after setup. On first launch the app downloads the ~9 GB content bundle
 itself — SHA-256-verified, HTTP-Range-resumable,
 free-space-checked — then extracts and serves it from a loopback server to an embedded
-WebView. The bundle (22 zip parts + `livemcq_manifest.json`, 8.76 GB uncompressed) is
+WebView. The bundle (21 zip parts + `livemcq_manifest.json`, 10.23 GB uncompressed) is
 produced by `scripts/make_content_bundle.py` and uploadable to archive.org or any
 Range-capable host. A single >4 GB "all-in-one" APK was proven impossible (Android's APK
 reader and Google's sign/align tools lack zip64; PDFs alone are 4.8 GB).
@@ -208,10 +209,10 @@ reader and Google's sign/align tools lack zip64; PDFs alone are 4.8 GB).
 | Question bank | ✅ 80,162 |
 | Per-exam maps | ✅ 16,167 (525 exams are permanently empty/locked in the API) |
 | Media (images / PDFs) | ✅ 35,206 files / 8.98 GB (`media/`, manifest committed) |
-| Video catalog (75 series → 2,198 classes) | ✅ metadata + study PDFs; streams are player-side |
+| Video catalog (74 series → 2,177 classes) | ✅ metadata + study PDFs + **playback streams** (public CDN MP4, 360p/540p/720p) |
 | **Offline viewer** (`viewer/`) | ✅ app-style clone: Home · Routine · Search · Classes · PDFs |
 | **SQLite DB** (`viewer/livemcq.db`, ~1.9 GB) | ✅ mirrors Isar model + FTS5 search |
-| **Android APK** (`android/` → `dist/LiveMCQ_Offline.apk`) | ✅ signed 33 KB; downloads the 8.76 GB bundle on first run |
+| **Android APK** (`android/` → `dist/LiveMCQ_Offline.apk`) | ✅ signed 33 KB; downloads the ~9 GB bundle on first run |
 
 **About the 525:** 16,692 `exam-view`/`archive-question-subject` fetches were attempted.
 525 (3.1%) return an empty question set in the API itself (payment-locked at database
@@ -231,12 +232,17 @@ registry — `media_manifest.tsv` (url ⇄ sha256 ⇄ size ⇄ status) and
 `media_download_list.tsv` (url ⇄ relpath) — is committed; the binary files themselves
 are kept in `media/` (gitignored, ~9 GB) so the repo stays under GitHub's limits.
 
-**About the videos:** `videoseries-subject-list` exposes **75 video-series subjects**;
-`get-video-list/<subject_id>` returns their **2,198 class sessions** (title, date,
+**About the videos:** `videoseries-subject-list` exposes **74 video-series subjects**;
+`get-video-list/<subject_id>` returns their **2,177 class sessions** (title, date,
 duration, free/paid, thumbnail, `pdf_link`, embed `secret_key`) — saved under
-`api_data/video_catalog/video_<subject>.json`. Playback streams are served by the app's
-own player keyed on `secret_key`, so video *bytes* aren't recoverable from the API, but
-every class's full catalog + attached PDFs are.
+`api_data/video_catalog/video_<subject>.json`. The **playback streams were recovered too.**
+Each class id resolves through `get-video-resulation/<id>/` to a public CDN
+(`https://jwbn3t9o8d.tenbytecdn.com/videos/<id>/<id>_<rendition>.mp4`,
+`rendition ∈ {360p, 540p, 720p}`) served as **plain, unauthenticated MP4** — no
+`secret_key` or token required — so the viewer plays every class inline and
+`scripts/download_videos.sh` (aria2c, resumable) can mirror the bytes locally. The resolved
+URL template for all 2,177 classes is in `viewer/data/video_streams.json`; the endpoint,
+payload and byte-size evidence are in [`docs/VIDEO_RECOVERY.md`](docs/VIDEO_RECOVERY.md).
 
 ## 🛠 Background
 
@@ -244,7 +250,7 @@ every class's full catalog + attached PDFs are.
 - **Full methodology:** see [`docs/RETRIEVAL_PROCESS.md`](docs/RETRIEVAL_PROCESS.md).
 - **Raw endpoint inventory:** see [`docs/API_ENDPOINTS.md`](docs/API_ENDPOINTS.md).
 - **Scripts (documented):** see [`scripts/README.md`](scripts/README.md).
-- **Authorization:** [`authorization/LiveMCQ_Data_Recovery_Authorization.pdf`](authorization/LiveMCQ_Data_Recovery_Authorization.pdf)
+- **Authorization:** [`LiveMCQ_Data_Recovery_Authorization.pdf`](LiveMCQ_Data_Recovery_Authorization.pdf) · [`.txt`](LiveMCQ_Data_Recovery_Authorization.txt)
 
 ---
 
